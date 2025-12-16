@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Service 1: Node.js App của bạn
+  app:
+    container_name: edunity_backend
+    build: .
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Quan trọng: Trong Docker, host không phải 'localhost' mà là tên service 'redis'
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    env_file:
+      - .env  # Đọc các biến DATABASE_URL từ file .env vào
+    depends_on:
+      - redis # Chờ Redis chạy xong mới chạy App
+    networks:
+      - edunity-network
+
+  # Service 2: Redis Database
+  redis:
+    container_name: edunity_redis
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379" # Mở cổng ra ngoài để bạn có thể debug từ máy thật
+    volumes:
+      - redis_data:/data # Lưu dữ liệu Redis bền vững (không mất khi tắt Docker)
+    networks:
+      - edunity-network
+
+# Định nghĩa Volume và Network
+volumes:
+  redis_data:
+
+networks:
+  edunity-network:
+    driver: bridge

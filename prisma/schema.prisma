@@ -1,0 +1,1000 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["auth", "public"]
+}
+
+// ==========================================
+// AUTH SCHEMA (SUPABASE SYSTEM TABLES)
+// Giữ nguyên không sửa đổi
+// ==========================================
+
+model audit_log_entries {
+  instance_id String?   @db.Uuid
+  id          String    @id @db.Uuid
+  payload     Json?     @db.Json
+  created_at  DateTime? @db.Timestamptz(6)
+  ip_address  String    @default("") @db.VarChar(64)
+
+  @@index([instance_id], map: "audit_logs_instance_id_idx")
+  @@schema("auth")
+}
+
+model flow_state {
+  id                     String                @id @db.Uuid
+  user_id                String?               @db.Uuid
+  auth_code              String
+  code_challenge_method  code_challenge_method
+  code_challenge         String
+  provider_type          String
+  provider_access_token  String?
+  provider_refresh_token String?
+  created_at             DateTime?             @db.Timestamptz(6)
+  updated_at             DateTime?             @db.Timestamptz(6)
+  authentication_method  String
+  auth_code_issued_at    DateTime?             @db.Timestamptz(6)
+  saml_relay_states      saml_relay_states[]
+
+  @@index([created_at(sort: Desc)])
+  @@index([auth_code], map: "idx_auth_code")
+  @@index([user_id, authentication_method], map: "idx_user_id_auth_method")
+  @@schema("auth")
+}
+
+model identities {
+  provider_id     String
+  user_id         String    @db.Uuid
+  identity_data   Json
+  provider        String
+  last_sign_in_at DateTime? @db.Timestamptz(6)
+  created_at      DateTime? @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+  email           String?   @default(dbgenerated("lower((identity_data ->> 'email'::text))"))
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([provider_id, provider], map: "identities_provider_id_provider_unique")
+  @@index([email])
+  @@index([user_id])
+  @@schema("auth")
+}
+
+model instances {
+  id              String    @id @db.Uuid
+  uuid            String?   @db.Uuid
+  raw_base_config String?
+  created_at      DateTime? @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+
+  @@schema("auth")
+}
+
+model mfa_amr_claims {
+  session_id            String   @db.Uuid
+  created_at            DateTime @db.Timestamptz(6)
+  updated_at            DateTime @db.Timestamptz(6)
+  authentication_method String
+  id                    String   @id(map: "amr_id_pk") @db.Uuid
+  sessions              sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([session_id, authentication_method], map: "mfa_amr_claims_session_id_authentication_method_pkey")
+  @@schema("auth")
+}
+
+model mfa_challenges {
+  id                     String      @id @db.Uuid
+  factor_id              String      @db.Uuid
+  created_at             DateTime    @db.Timestamptz(6)
+  verified_at            DateTime?   @db.Timestamptz(6)
+  ip_address             String      @db.Inet
+  otp_code               String?
+  web_authn_session_data Json?
+  mfa_factors            mfa_factors @relation(fields: [factor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mfa_challenges_auth_factor_id_fkey")
+
+  @@index([created_at(sort: Desc)], map: "mfa_challenge_created_at_idx")
+  @@schema("auth")
+}
+
+model mfa_factors {
+  id                           String           @id @db.Uuid
+  user_id                      String           @db.Uuid
+  friendly_name                String?
+  factor_type                  factor_type
+  status                       factor_status
+  created_at                   DateTime         @db.Timestamptz(6)
+  updated_at                   DateTime         @db.Timestamptz(6)
+  secret                       String?
+  phone                        String?
+  last_challenged_at           DateTime?        @unique @db.Timestamptz(6)
+  web_authn_credential         Json?
+  web_authn_aaguid             String?          @db.Uuid
+  last_webauthn_challenge_data Json?
+  mfa_challenges               mfa_challenges[]
+  users                        users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, phone], map: "unique_phone_factor_per_user")
+  @@index([user_id, created_at], map: "factor_id_created_at_idx")
+  @@index([user_id])
+  @@schema("auth")
+}
+
+model oauth_authorizations {
+  id                    String                     @id @db.Uuid
+  authorization_id      String                     @unique
+  client_id             String                     @db.Uuid
+  user_id               String?                    @db.Uuid
+  redirect_uri          String
+  scope                 String
+  state                 String?
+  resource              String?
+  code_challenge        String?
+  code_challenge_method code_challenge_method?
+  response_type         oauth_response_type        @default(code)
+  status                oauth_authorization_status @default(pending)
+  authorization_code    String?                    @unique
+  created_at            DateTime                   @default(now()) @db.Timestamptz(6)
+  expires_at            DateTime                   @default(dbgenerated("(now() + '00:03:00'::interval)")) @db.Timestamptz(6)
+  approved_at           DateTime?                  @db.Timestamptz(6)
+  nonce                 String?
+  oauth_clients         oauth_clients              @relation(fields: [client_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                 users?                     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("auth")
+}
+
+model oauth_client_states {
+  id            String   @id @db.Uuid
+  provider_type String
+  code_verifier String?
+  created_at    DateTime @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_oauth_client_states_created_at")
+  @@schema("auth")
+}
+
+model oauth_clients {
+  id                   String                 @id @db.Uuid
+  client_secret_hash   String?
+  registration_type    oauth_registration_type
+  redirect_uris        String
+  grant_types          String
+  client_name          String?
+  client_uri           String?
+  logo_uri             String?
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  deleted_at           DateTime?              @db.Timestamptz(6)
+  client_type          oauth_client_type      @default(confidential)
+  oauth_authorizations oauth_authorizations[]
+  oauth_consents       oauth_consents[]
+  sessions             sessions[]
+
+  @@index([deleted_at])
+  @@schema("auth")
+}
+
+model oauth_consents {
+  id            String        @id @db.Uuid
+  user_id       String        @db.Uuid
+  client_id     String        @db.Uuid
+  scopes        String
+  granted_at    DateTime      @default(now()) @db.Timestamptz(6)
+  revoked_at    DateTime?     @db.Timestamptz(6)
+  oauth_clients oauth_clients @relation(fields: [client_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, client_id], map: "oauth_consents_user_client_unique")
+  @@index([user_id, granted_at(sort: Desc)], map: "oauth_consents_user_order_idx")
+  @@schema("auth")
+}
+
+model one_time_tokens {
+  id         String              @id @db.Uuid
+  user_id    String              @db.Uuid
+  token_type one_time_token_type
+  token_hash String
+  relates_to String
+  created_at DateTime            @default(now()) @db.Timestamp(6)
+  updated_at DateTime            @default(now()) @db.Timestamp(6)
+  users      users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, token_type])
+  @@index([relates_to], map: "one_time_tokens_relates_to_hash_idx", type: Hash)
+  @@index([token_hash], map: "one_time_tokens_token_hash_hash_idx", type: Hash)
+  @@schema("auth")
+}
+
+model refresh_tokens {
+  instance_id   String?   @db.Uuid
+  id            BigInt    @id @default(autoincrement())
+  token         String?   @unique(map: "refresh_tokens_token_unique") @db.VarChar(255)
+  user_id       String?   @db.VarChar(255)
+  revoked       Boolean?
+  created_at    DateTime? @db.Timestamptz(6)
+  updated_at    DateTime? @db.Timestamptz(6)
+  parent        String?   @db.VarChar(255)
+  session_id    String?   @db.Uuid
+  sessions      sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([instance_id])
+  @@index([instance_id, user_id])
+  @@index([parent])
+  @@index([session_id, revoked])
+  @@index([updated_at(sort: Desc)])
+  @@schema("auth")
+}
+
+model saml_providers {
+  id                String            @id @db.Uuid
+  sso_provider_id   String            @db.Uuid
+  entity_id         String            @unique
+  metadata_xml      String
+  metadata_url      String?
+  attribute_mapping Json?
+  created_at        DateTime?         @db.Timestamptz(6)
+  updated_at        DateTime?         @db.Timestamptz(6)
+  name_id_format    String?
+  sso_providers     sso_providers     @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+model saml_relay_states {
+  id              String        @id @db.Uuid
+  sso_provider_id String        @db.Uuid
+  request_id      String
+  for_email       String?
+  redirect_to     String?
+  created_at      DateTime?     @db.Timestamptz(6)
+  updated_at      DateTime?     @db.Timestamptz(6)
+  flow_state_id   String?       @db.Uuid
+  flow_state      flow_state?   @relation(fields: [flow_state_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sso_providers   sso_providers @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)])
+  @@index([for_email])
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+model schema_migrations {
+  version String @id @db.VarChar(255)
+
+  @@schema("auth")
+}
+
+model sessions {
+  id                     String           @id @db.Uuid
+  user_id                String           @db.Uuid
+  created_at             DateTime?        @db.Timestamptz(6)
+  updated_at             DateTime?        @db.Timestamptz(6)
+  factor_id              String?          @db.Uuid
+  aal                    aal_level?
+  not_after              DateTime?        @db.Timestamptz(6)
+  refreshed_at           DateTime?        @db.Timestamp(6)
+  user_agent             String?
+  ip                     String?          @db.Inet
+  tag                    String?
+  oauth_client_id        String?          @db.Uuid
+  refresh_token_hmac_key String?
+  refresh_token_counter  BigInt?
+  scopes                 String?
+  mfa_amr_claims         mfa_amr_claims[]
+  refresh_tokens         refresh_tokens[]
+  oauth_clients          oauth_clients?   @relation(fields: [oauth_client_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                  users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([not_after(sort: Desc)])
+  @@index([oauth_client_id])
+  @@index([user_id])
+  @@index([user_id, created_at], map: "user_id_created_at_idx")
+  @@schema("auth")
+}
+
+model sso_domains {
+  id              String        @id @db.Uuid
+  sso_provider_id String        @db.Uuid
+  domain          String
+  created_at      DateTime?     @db.Timestamptz(6)
+  updated_at      DateTime?     @db.Timestamptz(6)
+  sso_providers   sso_providers @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+model sso_providers {
+  id                String              @id @db.Uuid
+  resource_id       String?
+  created_at        DateTime?           @db.Timestamptz(6)
+  updated_at        DateTime?           @db.Timestamptz(6)
+  disabled          Boolean?
+  saml_providers    saml_providers[]
+  saml_relay_states saml_relay_states[]
+  sso_domains       sso_domains[]
+
+  @@index([resource_id], map: "sso_providers_resource_id_pattern_idx")
+  @@schema("auth")
+}
+
+model users {
+  instance_id                 String?                @db.Uuid
+  id                          String                 @id @db.Uuid
+  aud                         String?                @db.VarChar(255)
+  role                        String?                @db.VarChar(255)
+  email                       String?                @db.VarChar(255)
+  encrypted_password          String?                @db.VarChar(255)
+  email_confirmed_at          DateTime?              @db.Timestamptz(6)
+  invited_at                  DateTime?              @db.Timestamptz(6)
+  confirmation_token          String?                @db.VarChar(255)
+  confirmation_sent_at        DateTime?              @db.Timestamptz(6)
+  recovery_token              String?                @db.VarChar(255)
+  recovery_sent_at            DateTime?              @db.Timestamptz(6)
+  email_change_token_new      String?                @db.VarChar(255)
+  email_change                String?                @db.VarChar(255)
+  email_change_sent_at        DateTime?              @db.Timestamptz(6)
+  last_sign_in_at             DateTime?              @db.Timestamptz(6)
+  raw_app_meta_data           Json?
+  raw_user_meta_data          Json?
+  is_super_admin              Boolean?
+  created_at                  DateTime?              @db.Timestamptz(6)
+  updated_at                  DateTime?              @db.Timestamptz(6)
+  phone                       String?                @unique
+  phone_confirmed_at          DateTime?              @db.Timestamptz(6)
+  phone_change                String?                @default("")
+  phone_change_token          String?                @default("") @db.VarChar(255)
+  phone_change_sent_at        DateTime?              @db.Timestamptz(6)
+  confirmed_at                DateTime?              @default(dbgenerated("LEAST(email_confirmed_at, phone_confirmed_at)")) @db.Timestamptz(6)
+  email_change_token_current  String?                @default("") @db.VarChar(255)
+  email_change_confirm_status Int?                   @default(0) @db.SmallInt
+  banned_until                DateTime?              @db.Timestamptz(6)
+  reauthentication_token      String?                @default("") @db.VarChar(255)
+  reauthentication_sent_at    DateTime?              @db.Timestamptz(6)
+  is_sso_user                 Boolean                @default(false)
+  deleted_at                  DateTime?              @db.Timestamptz(6)
+  is_anonymous                Boolean                @default(false)
+  identities                  identities[]
+  mfa_factors                 mfa_factors[]
+  oauth_authorizations        oauth_authorizations[]
+  oauth_consents              oauth_consents[]
+  one_time_tokens             one_time_tokens[]
+  sessions                    sessions[]
+  profiles                    profiles?
+
+  @@index([instance_id])
+  @@index([is_anonymous])
+  @@schema("auth")
+}
+
+// ==========================================
+// PUBLIC SCHEMA (EDUNITY APP TABLES)
+// Đã cập nhật đầy đủ bảng mới
+// ==========================================
+
+model announcements {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id String?     @db.Uuid
+  author_id    String?     @db.Uuid
+  title        String
+  content      String
+  attachments  Json?
+  created_at   DateTime?   @default(now()) @db.Timestamptz(6)
+  profiles     profiles?   @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  classrooms   classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// [UPDATED]: Thêm attempt_number, is_latest
+model assignment_submissions {
+  id            String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  assignment_id String?            @db.Uuid
+  student_id    String?            @db.Uuid
+  content       String?
+  file_urls     Json?
+  grade         Decimal?           @db.Decimal
+  feedback      String?
+  status        submission_status? @default(submitted)
+  submitted_at  DateTime?          @default(now()) @db.Timestamptz(6)
+  attempt_number Int?              @default(1)
+  is_latest      Boolean?          @default(true)
+  assignments   assignments?       @relation(fields: [assignment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles      profiles?          @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model assignments {
+  id                     String                   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id           String?                  @db.Uuid
+  title                  String
+  description            String?
+  due_date               DateTime?                @db.Timestamptz(6)
+  max_score              Int?                     @default(100)
+  rubric                 Json?
+  files                  Json?
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  assignment_submissions assignment_submissions[]
+  classrooms             classrooms?              @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model attendance_records {
+  id                  String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  session_id          String?              @db.Uuid
+  student_id          String?              @db.Uuid
+  checked_in_at       DateTime?            @default(now()) @db.Timestamptz(6)
+  status              String?              @default("present")
+  location_data       Json?
+  attendance_sessions attendance_sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles            profiles?            @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// [UPDATED]: Thêm late_threshold, auto_mark_absent
+model attendance_sessions {
+  id                     String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id           String?              @db.Uuid
+  open_at                DateTime?            @default(now()) @db.Timestamptz(6)
+  close_at               DateTime?            @db.Timestamptz(6)
+  late_threshold_minutes Int?                 @default(15)
+  auto_mark_absent       Boolean?             @default(true)
+  attendance_records     attendance_records[]
+  classrooms             classrooms?          @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// [NEW]: Nhật ký hệ thống
+model audit_logs {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  actor_id      String?   @db.Uuid
+  action        String
+  target_entity String
+  target_id     String?   @db.Uuid
+  metadata      Json?
+  ip_address    String?
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  profiles      profiles? @relation(fields: [actor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model certificates {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id     String?     @db.Uuid
+  student_id       String?     @db.Uuid
+  issue_date       DateTime?   @default(now()) @db.Timestamptz(6)
+  certificate_code String      @unique
+  certificate_url  String?
+  grade_summary    String?
+  classrooms       classrooms? @relation(fields: [classroom_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profiles         profiles?   @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model chat_messages {
+  id                  String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id        String?         @db.Uuid
+  sender_id           String?         @db.Uuid
+  content             String
+  reply_to_id         String?         @db.Uuid
+  created_at          DateTime?       @default(now()) @db.Timestamptz(6)
+  classrooms          classrooms?     @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  chat_messages       chat_messages?  @relation("chat_messagesTochat_messages", fields: [reply_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_chat_messages chat_messages[] @relation("chat_messagesTochat_messages")
+  profiles            profiles?       @relation(fields: [sender_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// [NEW]: Quản lý yêu cầu vào lớp
+model classroom_enrollment_requests {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id String?     @db.Uuid
+  user_id      String?     @db.Uuid
+  message      String?
+  status       String?     @default("pending")
+  requested_at DateTime?   @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime?   @db.Timestamptz(6)
+  classrooms   classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles     profiles?   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model classroom_members {
+  id           String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id String?         @db.Uuid
+  user_id      String?         @db.Uuid
+  role         classroom_role? @default(student)
+  joined_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  classrooms   classrooms?     @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles     profiles?       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([classroom_id, user_id])
+  @@schema("public")
+}
+
+// [NEW]: Thống kê học tập
+model classroom_user_stats {
+  id                    String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id          String?     @db.Uuid
+  user_id               String?     @db.Uuid
+  attendance_rate       Decimal?    @default(0) @db.Decimal(5, 2)
+  avg_score             Decimal?    @default(0) @db.Decimal(4, 2)
+  assignments_completed Int?        @default(0)
+  last_updated_at       DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms            classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles              profiles?   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([classroom_id, user_id])
+  @@schema("public")
+}
+
+// [NEW]: Lịch sử xác thực lớp học
+model classroom_verifications {
+  id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id      String?     @db.Uuid
+  verified_by       String?     @db.Uuid
+  verification_type String?
+  issued_at         DateTime?   @default(now()) @db.Timestamptz(6)
+  revoked_at        DateTime?   @db.Timestamptz(6)
+  reason            String?
+  classrooms        classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles          profiles?   @relation(fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model classrooms {
+  id                            String                          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title                         String
+  description                   String?
+  banner_url                    String?
+  community_id                  String?                         @db.Uuid
+  institute_id                  String?                         @db.Uuid
+  owner_id                      String                          @db.Uuid
+  enrollment_type               enrollment_type?                @default(public)
+  access_code                   String?
+  price                         Decimal?                        @default(0) @db.Decimal(15, 2)
+  currency                      String?                         @default("VND")
+  billing_cycle                 billing_cycle?                  @default(one_time)
+  settings                      Json?                           @default("{}")
+  is_verified_badge             Boolean?                        @default(false)
+  is_archived                   Boolean?                        @default(false)
+  created_at                    DateTime?                       @default(now()) @db.Timestamptz(6)
+  announcements                 announcements[]
+  assignments                   assignments[]
+  attendance_sessions           attendance_sessions[]
+  certificates                  certificates[]
+  chat_messages                 chat_messages[]
+  classroom_enrollment_requests classroom_enrollment_requests[]
+  classroom_members             classroom_members[]
+  classroom_user_stats          classroom_user_stats[]
+  classroom_verifications       classroom_verifications[]
+  communities                   communities?                    @relation(fields: [community_id], references: [id], onUpdate: NoAction)
+  institutes                    institutes?                     @relation(fields: [institute_id], references: [id], onUpdate: NoAction)
+  profiles                      profiles                        @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  exams                         exams[]
+  lessons                       lessons[]
+  live_sessions                 live_sessions[]
+  questions                     questions[]
+  timetable_events              timetable_events[]
+  transactions                  transactions[]
+
+  @@schema("public")
+}
+
+model communities {
+  id                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name              String
+  description       String?
+  cover_image       String?
+  institute_id      String?             @db.Uuid
+  owner_id          String              @db.Uuid
+  is_public         Boolean?            @default(true)
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  classrooms        classrooms[]
+  institutes        institutes?         @relation(fields: [institute_id], references: [id], onUpdate: NoAction)
+  profiles          profiles            @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  community_members community_members[]
+  community_posts   community_posts[]
+
+  @@schema("public")
+}
+
+// [NEW]: Thành viên cộng đồng
+model community_members {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String?      @db.Uuid
+  user_id      String?      @db.Uuid
+  role         String?      @default("member")
+  joined_at    DateTime?    @default(now()) @db.Timestamptz(6)
+  communities  communities? @relation(fields: [community_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles     profiles?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([community_id, user_id])
+  @@schema("public")
+}
+
+model community_posts {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  community_id String?      @db.Uuid
+  author_id    String?      @db.Uuid
+  title        String?
+  content      String
+  type         String?      @default("discussion")
+  created_at   DateTime?    @default(now()) @db.Timestamptz(6)
+  profiles     profiles?    @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  communities  communities? @relation(fields: [community_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model exam_attempts {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  exam_id          String?   @db.Uuid
+  student_id       String?   @db.Uuid
+  started_at       DateTime? @default(now()) @db.Timestamptz(6)
+  finished_at      DateTime? @db.Timestamptz(6)
+  total_score      Decimal?  @db.Decimal
+  answers_snapshot Json?
+  exams            exams?    @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles         profiles? @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model exam_questions {
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  exam_id    String? @db.Uuid
+  content    String
+  type       String? @default("multiple_choice")
+  options    Json?
+  points     Int?    @default(1)
+  sort_order Int?
+  exams      exams?  @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model exams {
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id     String?         @db.Uuid
+  title            String
+  description      String?
+  mode             exam_mode?      @default(examination)
+  start_time       DateTime?       @db.Timestamptz(6)
+  end_time         DateTime?       @db.Timestamptz(6)
+  duration_minutes Int?
+  is_proctored     Boolean?        @default(false)
+  settings         Json?
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  exam_attempts    exam_attempts[]
+  exam_questions   exam_questions[]
+  classrooms       classrooms?     @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model institute_members {
+  id                       String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institute_id             String?         @db.Uuid
+  user_id                  String?         @db.Uuid
+  role                     institute_role
+  student_id_code          String?
+  is_verified_by_institute Boolean?        @default(false)
+  joined_at                DateTime?       @default(now()) @db.Timestamptz(6)
+  institutes               institutes?     @relation(fields: [institute_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles                 profiles?       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([institute_id, user_id])
+  @@schema("public")
+}
+
+model institutes {
+  id                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name              String
+  slug              String              @unique
+  description       String?
+  logo_url          String?
+  website           String?
+  is_verified       Boolean?            @default(false)
+  owner_id          String?             @db.Uuid
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  classrooms        classrooms[]
+  communities       communities[]
+  institute_members institute_members[]
+  profiles          profiles?           @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model lessons {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id String?     @db.Uuid
+  title        String
+  content      String?
+  video_url    String?
+  resources    Json?
+  is_published Boolean?    @default(false)
+  sort_order   Int?        @default(0)
+  created_at   DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms   classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model live_sessions {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id  String?     @db.Uuid
+  host_id       String?     @db.Uuid
+  title         String
+  start_time    DateTime?   @db.Timestamptz(6)
+  meeting_url   String?
+  recording_url String?
+  status        String?     @default("scheduled")
+  created_at    DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms    classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles      profiles?   @relation(fields: [host_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model profiles {
+  id                                                         String                          @id @db.Uuid
+  email                                                      String?
+  full_name                                                  String?
+  avatar_url                                                 String?
+  bio                                                        String?
+  phone                                                      String?
+  app_role                                                   user_app_role?                  @default(normal_user)
+  created_at                                                 DateTime?                       @default(now()) @db.Timestamptz(6)
+  updated_at                                                 DateTime?                       @default(now()) @db.Timestamptz(6)
+  announcements                                              announcements[]
+  assignment_submissions                                     assignment_submissions[]
+  attendance_records                                         attendance_records[]
+  audit_logs                                                 audit_logs[]
+  certificates                                               certificates[]
+  chat_messages                                              chat_messages[]
+  classroom_enrollment_requests                              classroom_enrollment_requests[]
+  classroom_members                                          classroom_members[]
+  classroom_user_stats                                       classroom_user_stats[]
+  classroom_verifications_as_verifier                        classroom_verifications[]
+  classrooms                                                 classrooms[]
+  communities                                                communities[]
+  community_members                                          community_members[]
+  community_posts                                            community_posts[]
+  exam_attempts                                              exam_attempts[]
+  institute_members                                          institute_members[]
+  institutes                                                 institutes[]
+  live_sessions                                              live_sessions[]
+  users                                                      users                           @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  questions                                                  questions[]
+  teacher_verifications_as_user                              teacher_verifications[]         @relation("teacher_verifications_user")
+  teacher_verifications_as_verifier                          teacher_verifications[]         @relation("teacher_verifications_verifier")
+  transactions                                               transactions[]
+  user_relationships_user_relationships_parent_idToprofiles  user_relationships[]            @relation("user_relationships_parent_idToprofiles")
+  user_relationships_user_relationships_student_idToprofiles user_relationships[]            @relation("user_relationships_student_idToprofiles")
+
+  @@schema("public")
+}
+
+model questions {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id  String?     @db.Uuid
+  student_id    String?     @db.Uuid
+  topic         String?
+  content       String
+  is_anonymous  Boolean?    @default(false)
+  reply_content String?
+  created_at    DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms    classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles      profiles?   @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// [NEW]: Xác thực giáo viên
+model teacher_verifications {
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id           String?   @db.Uuid
+  verified_by       String?   @db.Uuid
+  verification_type String?
+  status            String?   @default("pending")
+  proof_url         String?
+  verified_at       DateTime? @db.Timestamptz(6)
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  profiles_user     profiles? @relation("teacher_verifications_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles_verifier profiles? @relation("teacher_verifications_verifier", fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model timetable_events {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id String?     @db.Uuid
+  title        String
+  description  String?
+  start_time   DateTime    @db.Timestamptz(6)
+  end_time     DateTime    @db.Timestamptz(6)
+  event_type   String?     @default("lesson")
+  created_at   DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms   classrooms? @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model transactions {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id          String?     @db.Uuid
+  classroom_id     String?     @db.Uuid
+  amount           Decimal     @db.Decimal(15, 2)
+  currency         String?     @default("VND")
+  status           String?     @default("pending")
+  payment_method   String?
+  transaction_code String?
+  created_at       DateTime?   @default(now()) @db.Timestamptz(6)
+  classrooms       classrooms? @relation(fields: [classroom_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profiles         profiles?   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model user_relationships {
+  id                                                         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  parent_id                                                  String?   @db.Uuid
+  student_id                                                 String?   @db.Uuid
+  relationship_type                                          String?   @default("parent")
+  is_confirmed                                               Boolean?  @default(false)
+  created_at                                                 DateTime? @default(now()) @db.Timestamptz(6)
+  profiles_user_relationships_parent_idToprofiles            profiles? @relation("user_relationships_parent_idToprofiles", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profiles_user_relationships_student_idToprofiles           profiles? @relation("user_relationships_student_idToprofiles", fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([parent_id, student_id])
+  @@schema("public")
+}
+
+// ENUMS
+
+enum aal_level {
+  aal1
+  aal2
+  aal3
+
+  @@schema("auth")
+}
+
+enum code_challenge_method {
+  s256
+  plain
+
+  @@schema("auth")
+}
+
+enum factor_status {
+  unverified
+  verified
+
+  @@schema("auth")
+}
+
+enum factor_type {
+  totp
+  webauthn
+  phone
+
+  @@schema("auth")
+}
+
+enum oauth_authorization_status {
+  pending
+  approved
+  denied
+  expired
+
+  @@schema("auth")
+}
+
+enum oauth_client_type {
+  public
+  confidential
+
+  @@schema("auth")
+}
+
+enum oauth_registration_type {
+  dynamic
+  manual
+
+  @@schema("auth")
+}
+
+enum oauth_response_type {
+  code
+
+  @@schema("auth")
+}
+
+enum one_time_token_type {
+  confirmation_token
+  reauthentication_token
+  recovery_token
+  email_change_token_new
+  email_change_token_current
+  phone_change_token
+
+  @@schema("auth")
+}
+
+enum billing_cycle {
+  one_time
+  weekly
+  monthly
+  yearly
+
+  @@schema("public")
+}
+
+enum classroom_role {
+  owner
+  instructor
+  assistant
+  student
+  guest
+
+  @@schema("public")
+}
+
+enum enrollment_type {
+  public
+  password
+  request
+  paid
+  institute_only
+
+  @@schema("public")
+}
+
+enum exam_mode {
+  practice
+  examination
+
+  @@schema("public")
+}
+
+enum institute_role {
+  owner
+  admin
+  teacher
+  student
+
+  @@schema("public")
+}
+
+enum submission_status {
+  submitted
+  graded
+  returned
+  late
+
+  @@schema("public")
+}
+
+enum user_app_role {
+  admin
+  normal_user
+
+  @@schema("public")
+}
