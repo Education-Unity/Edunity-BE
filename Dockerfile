@@ -1,27 +1,32 @@
-# 1. Chọn Base Image nhẹ nhất (Alpine)
+# 1. Chọn Base Image
 FROM node:20-alpine
 
-# 2. Tạo thư mục làm việc trong container
+# 2. Tạo thư mục làm việc
 WORKDIR /app
 
-# 3. Copy file định nghĩa package trước (để tận dụng cache của Docker)
+# --- SỬA LẠI DÒNG NÀY ---
+# Chỉ cần cài openssl là đủ
+RUN apk add --no-cache openssl
+# ------------------------
+
+# 3. Copy file package
 COPY package*.json ./
 COPY prisma ./prisma/
 
 # 4. Cài đặt dependencies
 RUN npm install
 
-# 5. Copy toàn bộ source code vào container
+# 5. Copy toàn bộ source code
 COPY . .
 
-# 6. Generate Prisma Client (Bắt buộc phải chạy lại trong môi trường Linux của Docker)
+# 6. Generate Prisma Client
 RUN npx prisma generate
 
-# 7. Build TypeScript sang JavaScript
+# 7. Build TypeScript
 RUN npm run build
 
-# 8. Mở cổng 3000
+# 8. Mở cổng
 EXPOSE 3000
 
-# 9. Lệnh chạy server khi container khởi động
+# 9. Chạy server
 CMD ["npm", "start"]

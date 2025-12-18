@@ -11,14 +11,24 @@ export class AuthController {
         email: z.string().email(),
         password: z.string().min(6),
         full_name: z.string().min(2),
-        role: z.enum(['student', 'teacher']).optional()
+        // 👇 SỬA LẠI CHỖ NÀY: Phải khớp với Enum trong Database
+        role: z.enum(['admin', 'normal_user']).optional() 
       });
+      
       const body = schema.parse(req.body);
 
-      const result = await AuthService.register(body.email, body.password, body.full_name, body.role);
+      // Gọi service, nếu body.role không có thì Service tự lấy mặc định 'normal_user'
+      const result = await AuthService.register(
+        body.email, 
+        body.password, 
+        body.full_name, 
+        body.role
+      );
+
       res.status(201).json({ message: "Đăng ký thành công", data: result });
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      // Zod error hoặc Service error đều bắt ở đây
+      res.status(400).json({ error: error.message || error.errors });
     }
   }
 

@@ -6,7 +6,12 @@ import dotenv from 'dotenv';
 
 // Import các Routes (Hiện tại mới có Auth)
 import authRoutes from './routes/auth.routes';
-
+import profileRoutes from './routes/profile.routes';
+import verificationRoutes from './routes/verification.routes';
+import classroomRoutes from './routes/classroom.routes';
+import lessonRoutes from './routes/lesson.routes';  
+import assignmentRoutes from './routes/assignment.routes';
+import attendanceRoutes from './routes/attendance.routes';
 // Load biến môi trường
 dotenv.config();
 
@@ -48,9 +53,14 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-// Gắn Auth Routes
+// Gắn routes
 app.use('/api/auth', authRoutes);
-
+app.use('/api/profiles', profileRoutes);
+app.use('/api/teacher-verifications', verificationRoutes);
+app.use('/api/classrooms', classroomRoutes);
+app.use('/api', lessonRoutes);
+app.use('/api', assignmentRoutes);
+app.use('/api', attendanceRoutes);
 // ==========================================
 // 3. ERROR HANDLING (Hứng lỗi toàn hệ thống)
 // ==========================================
