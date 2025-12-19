@@ -12,6 +12,10 @@ import classroomRoutes from './routes/classroom.routes';
 import lessonRoutes from './routes/lesson.routes';  
 import assignmentRoutes from './routes/assignment.routes';
 import attendanceRoutes from './routes/attendance.routes';
+import examRoutes from './routes/exam.routes';
+import statsRoutes from './routes/stats.routes';
+import instituteMemberRoutes from './routes/institute-member.routes';
+import institutinstituteVerificationRoutes from './routes/institute.verification.routes';
 // Load biến môi trường
 dotenv.config();
 
@@ -61,6 +65,10 @@ app.use('/api/classrooms', classroomRoutes);
 app.use('/api', lessonRoutes);
 app.use('/api', assignmentRoutes);
 app.use('/api', attendanceRoutes);
+app.use('/api', examRoutes);
+app.use('/api', statsRoutes);
+app.use('/api', instituteMemberRoutes);
+app.use('/api/institute-verifications', institutinstituteVerificationRoutes);
 // ==========================================
 // 3. ERROR HANDLING (Hứng lỗi toàn hệ thống)
 // ==========================================

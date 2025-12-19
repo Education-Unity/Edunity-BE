@@ -1,7 +1,6 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
-  // Đảm bảo có dòng này:
   binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -14,7 +13,6 @@ datasource db {
 
 // ==========================================
 // AUTH SCHEMA (SUPABASE SYSTEM TABLES)
-// Giữ nguyên không sửa đổi
 // ==========================================
 
 model audit_log_entries {
@@ -213,16 +211,16 @@ model one_time_tokens {
 }
 
 model refresh_tokens {
-  instance_id   String?   @db.Uuid
-  id            BigInt    @id @default(autoincrement())
-  token         String?   @unique(map: "refresh_tokens_token_unique") @db.VarChar(255)
-  user_id       String?   @db.VarChar(255)
-  revoked       Boolean?
-  created_at    DateTime? @db.Timestamptz(6)
-  updated_at    DateTime? @db.Timestamptz(6)
-  parent        String?   @db.VarChar(255)
-  session_id    String?   @db.Uuid
-  sessions      sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  instance_id    String?   @db.Uuid
+  id             BigInt    @id @default(autoincrement())
+  token          String?   @unique(map: "refresh_tokens_token_unique") @db.VarChar(255)
+  user_id        String?   @db.VarChar(255)
+  revoked        Boolean?
+  created_at     DateTime? @db.Timestamptz(6)
+  updated_at     DateTime? @db.Timestamptz(6)
+  parent         String?   @db.VarChar(255)
+  session_id     String?   @db.Uuid
+  sessions       sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([instance_id])
   @@index([instance_id, user_id])
@@ -233,16 +231,16 @@ model refresh_tokens {
 }
 
 model saml_providers {
-  id                String            @id @db.Uuid
-  sso_provider_id   String            @db.Uuid
-  entity_id         String            @unique
+  id                String              @id @db.Uuid
+  sso_provider_id   String              @db.Uuid
+  entity_id         String              @unique
   metadata_xml      String
   metadata_url      String?
   attribute_mapping Json?
-  created_at        DateTime?         @db.Timestamptz(6)
-  updated_at        DateTime?         @db.Timestamptz(6)
+  created_at        DateTime?           @db.Timestamptz(6)
+  updated_at        DateTime?           @db.Timestamptz(6)
   name_id_format    String?
-  sso_providers     sso_providers     @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sso_providers     sso_providers       @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([sso_provider_id])
   @@schema("auth")
@@ -377,7 +375,6 @@ model users {
 
 // ==========================================
 // PUBLIC SCHEMA (EDUNITY APP TABLES)
-// Đã cập nhật đầy đủ bảng mới
 // ==========================================
 
 model announcements {
@@ -394,7 +391,6 @@ model announcements {
   @@schema("public")
 }
 
-// [UPDATED]: Thêm attempt_number, is_latest
 model assignment_submissions {
   id            String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   assignment_id String?            @db.Uuid
@@ -442,7 +438,6 @@ model attendance_records {
   @@schema("public")
 }
 
-// [UPDATED]: Thêm late_threshold, auto_mark_absent
 model attendance_sessions {
   id                     String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   classroom_id           String?              @db.Uuid
@@ -456,7 +451,6 @@ model attendance_sessions {
   @@schema("public")
 }
 
-// [NEW]: Nhật ký hệ thống
 model audit_logs {
   id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   actor_id      String?   @db.Uuid
@@ -500,7 +494,6 @@ model chat_messages {
   @@schema("public")
 }
 
-// [NEW]: Quản lý yêu cầu vào lớp
 model classroom_enrollment_requests {
   id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   classroom_id String?     @db.Uuid
@@ -528,7 +521,6 @@ model classroom_members {
   @@schema("public")
 }
 
-// [NEW]: Thống kê học tập
 model classroom_user_stats {
   id                    String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   classroom_id          String?     @db.Uuid
@@ -544,7 +536,6 @@ model classroom_user_stats {
   @@schema("public")
 }
 
-// [NEW]: Lịch sử xác thực lớp học
 model classroom_verifications {
   id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   classroom_id      String?     @db.Uuid
@@ -616,7 +607,6 @@ model communities {
   @@schema("public")
 }
 
-// [NEW]: Thành viên cộng đồng
 model community_members {
   id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   community_id String?      @db.Uuid
@@ -648,10 +638,15 @@ model exam_attempts {
   id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   exam_id          String?   @db.Uuid
   student_id       String?   @db.Uuid
+   
   started_at       DateTime? @default(now()) @db.Timestamptz(6)
-  finished_at      DateTime? @db.Timestamptz(6)
-  total_score      Decimal?  @db.Decimal
-  answers_snapshot Json?
+  finished_at      DateTime? @db.Timestamptz(6) 
+   
+  score            Float?    @default(0) 
+  max_score        Float?    @default(0) 
+   
+  answers_snapshot Json?     
+   
   exams            exams?    @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   profiles         profiles? @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -659,66 +654,101 @@ model exam_attempts {
 }
 
 model exam_questions {
-  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  exam_id    String? @db.Uuid
-  content    String
-  type       String? @default("multiple_choice")
-  options    Json?
-  points     Int?    @default(1)
-  sort_order Int?
-  exams      exams?  @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id             String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  exam_id        String? @db.Uuid
+  content        String
+  type           String? @default("multiple_choice") 
+   
+  options        Json?    
+   
+  correct_option String?  
+   
+  points         Float?  @default(1) 
+  sort_order     Int?    @default(0) 
+   
+  exams          exams?  @relation(fields: [exam_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("public")
 }
 
 model exams {
-  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  classroom_id     String?         @db.Uuid
+  id               String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  classroom_id     String?        @db.Uuid
   title            String
   description      String?
-  mode             exam_mode?      @default(examination)
-  start_time       DateTime?       @db.Timestamptz(6)
-  end_time         DateTime?       @db.Timestamptz(6)
+  mode             exam_mode?     @default(examination)
+   
+  start_time       DateTime?      @db.Timestamptz(6)
+  end_time         DateTime?      @db.Timestamptz(6)
   duration_minutes Int?
-  is_proctored     Boolean?        @default(false)
+   
+  passing_score    Float?         @default(5) 
+   
+  is_published     Boolean?       @default(false)
+   
+  is_proctored     Boolean?       @default(false)
   settings         Json?
-  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  created_at       DateTime?      @default(now()) @db.Timestamptz(6)
+   
   exam_attempts    exam_attempts[]
   exam_questions   exam_questions[]
-  classrooms       classrooms?     @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  classrooms       classrooms?    @relation(fields: [classroom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("public")
 }
 
 model institute_members {
-  id                       String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  institute_id             String?         @db.Uuid
-  user_id                  String?         @db.Uuid
+  id                       String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institute_id             String?        @db.Uuid
+  user_id                  String?        @db.Uuid
   role                     institute_role
   student_id_code          String?
-  is_verified_by_institute Boolean?        @default(false)
-  joined_at                DateTime?       @default(now()) @db.Timestamptz(6)
-  institutes               institutes?     @relation(fields: [institute_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  profiles                 profiles?       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  is_verified_by_institute Boolean?       @default(false)
+  joined_at                DateTime?      @default(now()) @db.Timestamptz(6)
+  institutes               institutes?    @relation(fields: [institute_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles                 profiles?      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([institute_id, user_id])
   @@schema("public")
 }
 
+// [NEW] Model quản lý yêu cầu xác thực trung tâm
+model institute_verifications {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institute_id    String?   @db.Uuid
+  verified_by     String?   @db.Uuid
+  status          String?   @default("pending") // pending, approved, rejected
+  proof_documents Json?     // Lưu mảng ảnh URL giấy phép, v.v.
+  submit_note     String?
+  admin_feedback  String?
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+  
+  institutes      institutes? @relation(fields: [institute_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profiles        profiles?   @relation(fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
 model institutes {
-  id                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   name              String
-  slug              String              @unique
+  slug              String    @unique
   description       String?
   logo_url          String?
   website           String?
-  is_verified       Boolean?            @default(false)
-  owner_id          String?             @db.Uuid
-  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  is_verified       Boolean?  @default(false)
+  owner_id          String?   @db.Uuid
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  
   classrooms        classrooms[]
   communities       communities[]
   institute_members institute_members[]
-  profiles          profiles?           @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  // [NEW] Quan hệ với bảng verification
+  institute_verifications institute_verifications[]
+  
+  profiles          profiles? @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
@@ -786,6 +816,10 @@ model profiles {
   questions                                                  questions[]
   teacher_verifications_as_user                              teacher_verifications[]         @relation("teacher_verifications_user")
   teacher_verifications_as_verifier                          teacher_verifications[]         @relation("teacher_verifications_verifier")
+  
+  // [NEW] Quan hệ admin duyệt trung tâm
+  institute_verifications_as_verifier                        institute_verifications[]
+  
   transactions                                               transactions[]
   user_relationships_user_relationships_parent_idToprofiles  user_relationships[]            @relation("user_relationships_parent_idToprofiles")
   user_relationships_user_relationships_student_idToprofiles user_relationships[]            @relation("user_relationships_student_idToprofiles")
@@ -808,7 +842,6 @@ model questions {
   @@schema("public")
 }
 
-// [NEW]: Xác thực giáo viên
 model teacher_verifications {
   id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   user_id           String?   @db.Uuid
@@ -820,7 +853,7 @@ model teacher_verifications {
   created_at        DateTime? @default(now()) @db.Timestamptz(6)
   profiles_user     profiles? @relation("teacher_verifications_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   profiles_verifier profiles? @relation("teacher_verifications_verifier", fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  reason      String?
+  reason            String?
   @@schema("public")
 }
 
@@ -855,14 +888,14 @@ model transactions {
 }
 
 model user_relationships {
-  id                                                         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  parent_id                                                  String?   @db.Uuid
-  student_id                                                 String?   @db.Uuid
-  relationship_type                                          String?   @default("parent")
-  is_confirmed                                               Boolean?  @default(false)
-  created_at                                                 DateTime? @default(now()) @db.Timestamptz(6)
-  profiles_user_relationships_parent_idToprofiles            profiles? @relation("user_relationships_parent_idToprofiles", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  profiles_user_relationships_student_idToprofiles           profiles? @relation("user_relationships_student_idToprofiles", fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                                  String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  parent_id                                           String?   @db.Uuid
+  student_id                                          String?   @db.Uuid
+  relationship_type                                   String?   @default("parent")
+  is_confirmed                                        Boolean?  @default(false)
+  created_at                                          DateTime? @default(now()) @db.Timestamptz(6)
+  profiles_user_relationships_parent_idToprofiles     profiles? @relation("user_relationships_parent_idToprofiles", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profiles_user_relationships_student_idToprofiles    profiles? @relation("user_relationships_student_idToprofiles", fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([parent_id, student_id])
   @@schema("public")
